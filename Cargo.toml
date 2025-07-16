@@ -1,5 +1,5 @@
 [package]
-name = "gossiprs"
+name = "mycache-rs"
 version = "0.1.0"
 edition = "2024"
 
