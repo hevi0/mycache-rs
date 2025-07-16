@@ -15,8 +15,6 @@ use std::io::{BufReader};
 use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 
-
-
 async fn handle_incoming_gossip(node: &Node, shared_state: &Arc<Mutex<State>>, stream: TcpStream) -> Result<()> {
     let mut conn = Connection::new(stream);
     let maybe_frame = conn.read_frame().await?;
@@ -24,31 +22,35 @@ async fn handle_incoming_gossip(node: &Node, shared_state: &Arc<Mutex<State>>, s
     match maybe_frame {
         Some(Frame::Update(update)) => {
             
-
             match shared_state.lock() {
 
                 Ok(mut state) => {
-                    let (notinpeer, notinself) = state.diff_peerlist(&update.peerlist);
+                    let (notinpeer, notinself) = state.diff_peerlist(&update);
+
+                    if state.merge_peerlist(&notinself) > 0 {
+                        state.version += 1;
+                    }
+                    let now = SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap_or_else(|e| Duration::from_secs(0)).as_secs();
+                    if let Some(peer) = state.peermap.get_mut(&update.id) {
+                        peer.healthcheck = now;
+                        peer.version = update.version;
+                        peer.generation = update.generation;
+                    }
                     
+                    state.save(&node.state_file);
+
                     let frame = Frame::Update(PeerUpdate {
                         id: state.id.clone(),
+                        ip: state.ip.clone(),
+                        port: state.port.clone(),
                         version: state.version,
                         generation: state.generation,
                         peerlist: notinpeer
                     });
 
                     conn.write_frame(&frame).await?;
-
-                    state.merge_peerlist(&notinself);
-                    let now = SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or_else(|e| Duration::from_secs(0)).as_secs();
-                    if let Some(peer) = state.peermap.get_mut(&update.id) {
-                        peer.healthcheck = now;
-                    }
-
-                    state.version += 1;
-                    state.save(&node.state_file);
 
                 }
 
@@ -64,8 +66,6 @@ async fn handle_incoming_gossip(node: &Node, shared_state: &Arc<Mutex<State>>, s
     Ok(())
 }
 
-
-
 async fn send_gossip(node: &Node, state: &mut State, peer: &PeerNode) -> Result<()> {
 
     let mut stream = TcpStream::connect(format!("{}:{}", peer.ip, peer.port)).await?;
@@ -74,6 +74,8 @@ async fn send_gossip(node: &Node, state: &mut State, peer: &PeerNode) -> Result<
 
     let update = Frame::Update(PeerUpdate {
         id: state.id.clone(),
+        ip: state.ip.clone(),
+        port: state.port.clone(),
         version: state.version,
         generation: state.generation,
         peerlist: state.peermap.values().cloned().collect()
@@ -84,21 +86,25 @@ async fn send_gossip(node: &Node, state: &mut State, peer: &PeerNode) -> Result<
     if let Some(Frame::Update(resp_update)) = conn.read_frame().await? {
         println!("Received response");
         
-        let (notinpeer, notinself) = state.diff_peerlist(&resp_update.peerlist);
-        state.merge_peerlist(&notinself);
+        let (notinpeer, notinself) = state.diff_peerlist(&resp_update);
+        if state.merge_peerlist(&notinself) > 0 {
+            state.version += 1;
+        }
+        
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_else(|e| Duration::from_secs(0)).as_secs();
         if let Some(peer) = state.peermap.get_mut(&peer.id) {
             peer.healthcheck = now;
+            peer.version = resp_update.version;
+            peer.generation = resp_update.generation;
         }
-        state.version += 1;
+        
         state.save(&node.state_file);
     }
     
     Ok(())
 }
-
 
 fn load_state(state_file: &PathBuf) -> Result<State> {
     let bufreader = BufReader::new(File::open(&state_file)?);
@@ -185,6 +191,7 @@ impl Node {
         {
             let mut state = state_clone.lock().unwrap();
             state.generation += 1;
+            state.version += 1;
             state.save(&self.state_file);
         }
 
@@ -236,7 +243,6 @@ impl Node {
 
             if let Ok(mut state) = state_clone.lock() {
                 
-
                 let peerlist = state.peerlist();
                 println!("{:?}", peerlist);
 
@@ -254,8 +260,7 @@ impl Node {
                     }
                 }
             }
-            
-
+    
             tokio::time::sleep(Duration::from_millis(2000)).await;
         }
     }

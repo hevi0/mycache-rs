@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 
 use crate::config::*;
+use crate::connection::PeerUpdate;
 use crate::peernode::*;
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -36,16 +37,15 @@ impl State {
         }
     }
 
-    pub fn diff_peerlist(&self, peerlist: &PeerList) -> (PeerList, PeerList) {
-        let max_capacity = peerlist.len() + self.peermap.len();
+    pub fn diff_peerlist(&self, peer: &PeerUpdate) -> (PeerList, PeerList) {
+        let max_capacity = peer.peerlist.len() + self.peermap.len();
         let mut notinpeer: Vec<PeerNode> = Vec::with_capacity(max_capacity);
         let mut notinself: Vec<PeerNode> = Vec::with_capacity(max_capacity);
 
-        let mut aspeermap: HashMap<&str, &PeerNode> = HashMap::with_capacity(peerlist.len());
-        for p in peerlist {
+        let mut aspeermap: HashMap<&str, &PeerNode> = HashMap::with_capacity(peer.peerlist.len());
+        for p in &peer.peerlist {
             aspeermap.insert(&p.id, &p);
         }
-
 
         for k in self.peermap.keys() {
 
@@ -64,16 +64,32 @@ impl State {
                 notinself.push(aspeermap[k].clone());
             }
         }
+        if !self.peermap.contains_key(&peer.id) {
+            notinself.push(PeerNode {
+                id: peer.id.clone(),
+                ip: peer.ip.clone(),
+                port: peer.port.clone(),
+                version: peer.version,
+                generation: peer.generation,
+                healthcheck: 0
+            });
+        }
 
         (notinpeer, notinself)
     }
 
-    pub fn merge_peerlist(&mut self, peerlist: &PeerList) {
+    /// Merge peerlist (which includes updates and new peers)
+    pub fn merge_peerlist(&mut self, peerlist: &PeerList) -> u32 {
+        let mut new_peer_counter: u32 = 0; // only count NEW peers, not updates
         for p in peerlist {
             if p.id != self.id {
+                if !self.peermap.contains_key(&p.id) {
+                    new_peer_counter += 1;
+                }
                 self.peermap.insert(p.id.clone(), p.clone());
             }
         }
+        new_peer_counter
     }
 
     // Config is consumed, should it?
