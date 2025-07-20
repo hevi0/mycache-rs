@@ -8,7 +8,8 @@ pub struct PeerNode {
     pub port: String,
     pub version: u64,
     pub generation: u32,
-    pub healthcheck: u64
+    pub healthcheck: u64,
+    pub error_count: u8
 }
 
 pub type PeerList = Vec<PeerNode>;

@@ -71,7 +71,8 @@ impl State {
                 port: peer.port.clone(),
                 version: peer.version,
                 generation: peer.generation,
-                healthcheck: 0
+                healthcheck: 0,
+                error_count: 0
             });
         }
 
@@ -111,6 +112,7 @@ impl State {
                 version: 0,
                 generation: 0,
                 healthcheck: 0,
+                error_count: 0
             });
         }
 
@@ -124,14 +126,24 @@ impl State {
         self.port = config.port.clone();
         
         for p in &config.seeds {
-            self.peermap.insert(p.id.clone(), PeerNode {
-                id: p.id.clone(),
-                ip: p.ip.clone(),
-                port: p.port.clone(),
-                version: 0,
-                generation: 0,
-                healthcheck: 0,
-            });
+            
+            if self.peermap.contains_key(&p.id) {
+                if let Some(peer) = self.peermap.get_mut(&p.id) {
+                    peer.id = p.id.clone();
+                    peer.ip = p.ip.clone();
+                    peer.port = p.port.clone();
+                }
+            } else {
+                self.peermap.insert(p.id.clone(), PeerNode {
+                    id: p.id.clone(),
+                    ip: p.ip.clone(),
+                    port: p.port.clone(),
+                    version: 0,
+                    generation: 0,
+                    healthcheck: 0,
+                    error_count: 0
+                });
+            }
         }
     }
 
@@ -181,7 +193,8 @@ pub fn diff_peerlist(peer1: &PeerUpdate, peer2: &PeerUpdate) -> (PeerList, PeerL
             port: peer2.port.clone(),
             version: peer2.version,
             generation: peer2.generation,
-            healthcheck: 0
+            healthcheck: 0,
+            error_count: 0
         });
     }
 
@@ -192,7 +205,8 @@ pub fn diff_peerlist(peer1: &PeerUpdate, peer2: &PeerUpdate) -> (PeerList, PeerL
             port: peer1.port.clone(),
             version: peer1.version,
             generation: peer1.generation,
-            healthcheck: 0
+            healthcheck: 0,
+            error_count: 0
         });
     }
 

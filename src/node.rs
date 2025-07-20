@@ -1,3 +1,4 @@
+use crate::chash::*;
 use crate::common::*;
 use crate::config::*;
 use crate::connection::*;
@@ -17,48 +18,56 @@ use tokio::net::{TcpListener, TcpStream};
 
 async fn handle_incoming_gossip(node: &Node, shared_state: &Arc<Mutex<State>>, stream: TcpStream) -> Result<()> {
     let mut conn = Connection::new(stream);
+
     let maybe_frame = conn.read_frame().await?;
     
     match maybe_frame {
         Some(Frame::Update(update)) => {
             
-            match shared_state.lock() {
+            let new_frame = {
+                let mut state = shared_state.lock().unwrap();
 
-                Ok(mut state) => {
-                    let (notinpeer, notinself) = state.diff_peerlist(&update);
+                let (notinpeer, notinself) = state.diff_peerlist(&update);
 
-                    if state.merge_peerlist(&notinself) > 0 {
-                        state.version += 1;
-                    }
-                    let now = SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or_else(|e| Duration::from_secs(0)).as_secs();
-                    if let Some(peer) = state.peermap.get_mut(&update.id) {
-                        peer.healthcheck = now;
-                        peer.version = update.version;
-                        peer.generation = update.generation;
-                    }
-                    
-                    state.save(&node.state_file);
-
-                    let frame = Frame::Update(PeerUpdate {
-                        id: state.id.clone(),
-                        ip: state.ip.clone(),
-                        port: state.port.clone(),
-                        version: state.version,
-                        generation: state.generation,
-                        peerlist: notinpeer
-                    });
-
-                    conn.write_frame(&frame).await?;
-
+                if state.merge_peerlist(&notinself) > 0 {
+                    state.version += 1;
                 }
+                let now = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_else(|e| Duration::from_secs(0)).as_secs();
+                if let Some(peer) = state.peermap.get_mut(&update.id) {
+                    peer.healthcheck = now;
+                    peer.error_count = 0; // successful exchange, so reset errors
+                    peer.version = update.version;
+                    peer.generation = update.generation;
+                }
+                
+                state.save(&node.state_file);
 
-                _ => {
+                let frame = Frame::Update(PeerUpdate {
+                    id: state.id.clone(),
+                    ip: state.ip.clone(),
+                    port: state.port.clone(),
+                    version: state.version,
+                    generation: state.generation,
+                    peerlist: notinpeer
+                });
 
+                frame
+            };
+
+            if let Err(PeerConnError(msg)) = conn.write_frame(&new_frame).await {
+                // Writing to the peer stream failed, so we should note this.
+                // It may mean we have lost connection to the peer.
+                let mut state = shared_state.lock().unwrap();
+                if let Some(peer) = state.peermap.get_mut(&update.id) {
+                    peer.error_count += 1;
+                    state.save(&node.state_file);
                 }
             }
+
         }
+
         _ => {
             println!("Not a frame, but not an error either")
         }
@@ -66,63 +75,39 @@ async fn handle_incoming_gossip(node: &Node, shared_state: &Arc<Mutex<State>>, s
     Ok(())
 }
 
-async fn send_gossip2(update: PeerUpdate, peer: &PeerNode) -> Result<Option<(PeerUpdate, PeerList, PeerList)>> {
-    let mut stream = TcpStream::connect(format!("{}:{}", peer.ip, peer.port)).await?;
-
-    let mut conn = Connection::new(stream);
-
-    let frame = Frame::Update(update);
-    conn.write_frame(&frame).await?;
-
+async fn send_gossip2(update: PeerUpdate, peer: &PeerNode) -> PeerConnResult<Option<(PeerUpdate, PeerList, PeerList)>> {
     
+    if let Ok(stream) = TcpStream::connect(format!("{}:{}", peer.ip, peer.port)).await {
 
-    if let Some(Frame::Update(resp_update)) = conn.read_frame().await? {
-        let Frame::Update(u) = frame;
-        let (notinself, notinpeer) = diff_peerlist(&u, &resp_update);
-        return Ok(Some((resp_update, notinself, notinpeer)));
-    }
+        let mut conn = Connection::new(stream);
 
-    Ok(None)
-}
-
-async fn send_gossip(node: &Node, state: &mut State, peer: &PeerNode) -> Result<()> {
-
-    let mut stream = TcpStream::connect(format!("{}:{}", peer.ip, peer.port)).await?;
-
-    let mut conn = Connection::new(stream);
-
-    let update = Frame::Update(PeerUpdate {
-        id: state.id.clone(),
-        ip: state.ip.clone(),
-        port: state.port.clone(),
-        version: state.version,
-        generation: state.generation,
-        peerlist: state.peermap.values().cloned().collect()
-    });
-    
-    conn.write_frame(&update).await?;
-
-    if let Some(Frame::Update(resp_update)) = conn.read_frame().await? {
-        println!("Received response");
+        let frame = Frame::Update(update);
         
-        let (notinpeer, notinself) = state.diff_peerlist(&resp_update);
-        if state.merge_peerlist(&notinself) > 0 {
-            state.version += 1;
+        match conn.write_frame(&frame).await {
+            Ok(()) => {
+                match conn.read_frame().await {
+                    Ok(Some(Frame::Update(resp_update))) => {
+                        let Frame::Update(u) = frame;
+                        let (notinself, notinpeer) = diff_peerlist(&u, &resp_update);
+                        return Ok(Some((resp_update, notinself, notinpeer)));
+                    },
+                    Ok(None) => {
+                        return Ok(None);
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(e);
+            }
         }
-        
-        let now = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_else(|e| Duration::from_secs(0)).as_secs();
-        if let Some(peer) = state.peermap.get_mut(&peer.id) {
-            peer.healthcheck = now;
-            peer.version = resp_update.version;
-            peer.generation = resp_update.generation;
-        }
-        
-        state.save(&node.state_file);
+    } else {
+        Err(PeerConnError("Error connecting to peer stream".to_string()))
     }
     
-    Ok(())
+    
 }
 
 fn load_state(state_file: &PathBuf) -> Result<State> {
@@ -147,7 +132,8 @@ pub struct Node {
     
     pub config: Config,
     pub state: Arc<Mutex<State>>,
-    pub shutdown: Shutdown
+    pub shutdown: Shutdown,
+    pub chash: Chash
 }
 
 impl Node {
@@ -197,7 +183,8 @@ impl Node {
             state_file: state_file,
             config: config,
             state: Arc::new(Mutex::new(state)),
-            shutdown: shutdown
+            shutdown: shutdown,
+            chash: Chash::new(vec![452, 70821937, 12, 462308])
         }
     }
 
@@ -230,6 +217,7 @@ impl Node {
                             if let Ok(stream) = result {
                                 if let Err(e) = handle_incoming_gossip(&self, &state_clone, stream.0).await {
                                     println!("Error handling client connection: {:?}", e);
+                                    
                                 }
                             }
                             
@@ -259,17 +247,35 @@ impl Node {
                 println!("Stopping client");
                 return;
             }
+            tokio::time::sleep(Duration::from_millis(2000)).await;
 
-            let (peerlist, version, generation, peer) = {
+            let (peerlist, version, generation, gossipees) = {
                 let state = state_clone.lock().unwrap();
                 let peerlist: Vec<PeerNode> = state.peermap.values().cloned().collect();
+
+                println!("============");
                 println!("{:?}", peerlist);
 
-                let peer_idx: usize = (rand::random::<u32>() % (peerlist.len() as u32)) as usize;
-                let peer = peerlist[peer_idx].clone();
+                let live_gossipees: Vec<PeerNode> = state.peermap.values().cloned().filter(|p| {
+                    p.error_count < 3
+                }).collect();
 
-                (peerlist, state.version, state.generation, peer)
+                let gossipees = {
+                    if live_gossipees.len() == 0 {
+                        vec![]
+                    } else {
+                        let gossipee_idx: usize = (rand::random::<u32>() % (live_gossipees.len() as u32)) as usize;
+                        vec![live_gossipees[gossipee_idx].clone()]
+                    }
+                };
+
+                (peerlist, state.version, state.generation, gossipees)
             };
+
+            if gossipees.len() == 0 {
+                break;
+            }
+        
 
             let update = PeerUpdate {
                 id: self.config.id.clone(),
@@ -280,12 +286,18 @@ impl Node {
                 peerlist: peerlist
             };
 
-            let result = send_gossip2(update, &peer).await;
+            let gossipee = &gossipees[0];
+            let result = send_gossip2(update, &gossipee).await;
             match result {
                 Err(e) => {
-                    println!("Error in connection to peer {} {:?}", format!("{}:{}", peer.ip, peer.port), e);
+                    let mut state = state_clone.lock().unwrap();
+                    if let Some(peer) = state.peermap.get_mut(&gossipee.id) {
+                        peer.error_count += 1;
+                        state.save(&self.state_file);
+                    }
+                    println!("Error in connection to peer {} {:?}", format!("{}:{}", gossipee.ip, gossipee.port), e);
                 }
-                Ok(Some((resp_update, notinself,notinpeer))) => {
+                Ok(Some((resp_update, notinself, notinpeer))) => {
                     let mut state = state_clone.lock().unwrap();
                     if state.merge_peerlist(&notinself) > 0 {
                         state.version += 1;
@@ -294,8 +306,9 @@ impl Node {
                     let now = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .unwrap_or_else(|e| Duration::from_secs(0)).as_secs();
-                    if let Some(peer) = state.peermap.get_mut(&peer.id) {
+                    if let Some(peer) = state.peermap.get_mut(&gossipee.id) {
                         peer.healthcheck = now;
+                        peer.error_count = 0; // successful exchange, so reset errors
                         peer.version = resp_update.version;
                         peer.generation = resp_update.generation;
                     }
@@ -306,8 +319,6 @@ impl Node {
 
                 }
             }
-    
-            tokio::time::sleep(Duration::from_millis(2000)).await;
         }
     }
 }

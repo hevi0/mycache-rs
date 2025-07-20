@@ -15,6 +15,8 @@ use serde_json;
 
 use std::env;
 
+mod chash;
+
 mod common;
 use common::Result;
 
