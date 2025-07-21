@@ -65,6 +65,13 @@ impl Chash {
             while i < self.hashes.len() && self.hashes[i] < h {
                 i += 1;
             }
+            if i < self.hashes.len() && h == self.hashes[i] {
+                if self.vnodes[i] == id {
+                    // already added this node in the past
+                    continue;
+                }
+                panic!("Collision between hashes! (Should be rare)");
+            }
             self.hashes.insert(i, h);
             self.vnodes.insert(i, id.to_string());
         }
@@ -90,6 +97,6 @@ impl Chash {
 
         &self.vnodes[idx]
     }
-    
+
 }
 

@@ -133,7 +133,7 @@ pub struct Node {
     pub config: Config,
     pub state: Arc<Mutex<State>>,
     pub shutdown: Shutdown,
-    pub chash: Chash
+    pub chash: Arc<Mutex<Chash>>,
 }
 
 impl Node {
@@ -178,14 +178,22 @@ impl Node {
             }
         };
 
-        Node {
+        let mut node = Node {
             config_file: config_file,
             state_file: state_file,
             config: config,
             state: Arc::new(Mutex::new(state)),
             shutdown: shutdown,
-            chash: Chash::new(vec![452, 70821937, 12, 462308])
+            chash: Arc::new(Mutex::new(Chash::new(vec![452, 70821937, 12, 462308])))
+        };
+
+        {
+            let mut chash = node.chash.lock().unwrap();
+            chash.add_node(&node.config.id);
         }
+
+        node
+
     }
 
     /// Listens for gossip messages from other nodes.
@@ -275,7 +283,6 @@ impl Node {
             if gossipees.len() == 0 {
                 break;
             }
-        
 
             let update = PeerUpdate {
                 id: self.config.id.clone(),
@@ -298,22 +305,32 @@ impl Node {
                     println!("Error in connection to peer {} {:?}", format!("{}:{}", gossipee.ip, gossipee.port), e);
                 }
                 Ok(Some((resp_update, notinself, notinpeer))) => {
-                    let mut state = state_clone.lock().unwrap();
-                    if state.merge_peerlist(&notinself) > 0 {
-                        state.version += 1;
+                    {
+                        let mut state = state_clone.lock().unwrap();
+                        if state.merge_peerlist(&notinself) > 0 {
+                            state.version += 1;
+                        }
+                        
+                        let now = SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap_or_else(|e| Duration::from_secs(0)).as_secs();
+                        if let Some(peer) = state.peermap.get_mut(&gossipee.id) {
+                            peer.healthcheck = now;
+                            peer.error_count = 0; // successful exchange, so reset errors
+                            peer.version = resp_update.version;
+                            peer.generation = resp_update.generation;
+                        }
+                        
+                        state.save(&self.state_file);
                     }
-                    
-                    let now = SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or_else(|e| Duration::from_secs(0)).as_secs();
-                    if let Some(peer) = state.peermap.get_mut(&gossipee.id) {
-                        peer.healthcheck = now;
-                        peer.error_count = 0; // successful exchange, so reset errors
-                        peer.version = resp_update.version;
-                        peer.generation = resp_update.generation;
+
+                    // Add everything in notinself to the consistent-hash
+                    {
+                        let mut chash = self.chash.lock().unwrap();
+                        for p in &notinself {
+                            chash.add_node(&p.id);
+                        }
                     }
-                    
-                    state.save(&self.state_file);
                 }
                 _ => {
 
