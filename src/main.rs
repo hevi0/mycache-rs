@@ -18,7 +18,7 @@ use std::env;
 mod chash;
 
 mod common;
-use common::Result;
+use common::*;
 
 mod connection;
 use connection::*;
@@ -48,7 +48,7 @@ async fn main() {
         println!("Missing id argument");
         exit(1);
     }
-    let id = &args[1];
+    let id: IdType = args[1].parse().unwrap();
     let shutdown= Shutdown::new();
     let shutdown_clone = shutdown.clone();
 
@@ -58,7 +58,7 @@ async fn main() {
         shutdown_clone.shutdown();
     });
 
-    let node = Node::new(id.clone(), None, shutdown);
+    let node = Node::new(id, None, shutdown);
 
     // run async jobs on the same task
     let _ = tokio::join!(node.listenloop(), node.gossiploop());

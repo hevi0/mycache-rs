@@ -144,7 +144,7 @@ impl Connection {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub(crate) struct PeerUpdate {
-    pub id: String,
+    pub id: IdType,
     pub ip: String,
     pub port: String,
     pub version: u64,

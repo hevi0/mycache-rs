@@ -8,10 +8,11 @@ use serde_json;
 use crate::config::*;
 use crate::connection::PeerUpdate;
 use crate::peernode::*;
+use crate::common::*;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct State {
-    pub id: String,
+    pub id: IdType,
     pub ip: String,
     pub port: String,
     pub version: u64,
@@ -42,17 +43,16 @@ impl State {
         let mut notinpeer: Vec<PeerNode> = Vec::with_capacity(max_capacity);
         let mut notinself: Vec<PeerNode> = Vec::with_capacity(max_capacity);
 
-        let mut aspeermap: HashMap<&str, &PeerNode> = HashMap::with_capacity(peer.peerlist.len());
+        let mut aspeermap: HashMap<&IdType, &PeerNode> = HashMap::with_capacity(peer.peerlist.len());
         for p in &peer.peerlist {
             aspeermap.insert(&p.id, &p);
         }
 
         for k in self.peermap.keys() {
 
-            let kstr = k.as_str();
-            if !aspeermap.contains_key(kstr) {
+            if !aspeermap.contains_key(k) {
                 notinpeer.push(self.peermap[k].clone());
-            } else if aspeermap[kstr].version < self.peermap[kstr].version {
+            } else if aspeermap[k].version < self.peermap[k].version {
                 notinpeer.push(self.peermap[k].clone());
             }
         }
@@ -66,7 +66,7 @@ impl State {
         }
         if !self.peermap.contains_key(&peer.id) {
             notinself.push(PeerNode {
-                id: peer.id.clone(),
+                id: peer.id,
                 ip: peer.ip.clone(),
                 port: peer.port.clone(),
                 version: peer.version,
@@ -96,7 +96,7 @@ impl State {
     // Config is consumed, should it?
     pub fn from_config(config: &Config) -> State {
         let mut s = State {
-            id: config.id.clone(),
+            id: config.id,
             ip: config.ip.clone(),
             port: config.port.clone(),
             version: 0,
@@ -105,8 +105,8 @@ impl State {
         };
 
         for p in &config.seeds {
-            s.peermap.insert(p.id.clone(), PeerNode {
-                id: p.id.clone(),
+            s.peermap.insert(p.id, PeerNode {
+                id: p.id,
                 ip: p.ip.clone(),
                 port: p.port.clone(),
                 version: 0,
@@ -121,7 +121,7 @@ impl State {
 
     // Config is consumed, should it?
     pub fn merge_config(&mut self, config: &Config) {
-        self.id = config.id.clone();
+        self.id = config.id;
         self.ip = config.ip.clone();
         self.port = config.port.clone();
         
@@ -159,12 +159,12 @@ pub fn diff_peerlist(peer1: &PeerUpdate, peer2: &PeerUpdate) -> (PeerList, PeerL
     let mut notinpeer2: Vec<PeerNode> = Vec::with_capacity(max_capacity);
     let mut notinpeer1: Vec<PeerNode> = Vec::with_capacity(max_capacity);
 
-    let mut peer1map: HashMap<&str, &PeerNode> = HashMap::with_capacity(peer1.peerlist.len());
+    let mut peer1map: HashMap<&IdType, &PeerNode> = HashMap::with_capacity(peer1.peerlist.len());
     for p in &peer1.peerlist {
         peer1map.insert(&p.id, &p);
     }
 
-    let mut peer2map: HashMap<&str, &PeerNode> = HashMap::with_capacity(peer2.peerlist.len());
+    let mut peer2map: HashMap<&IdType, &PeerNode> = HashMap::with_capacity(peer2.peerlist.len());
     for p in &peer2.peerlist {
         peer2map.insert(&p.id, &p);
     }
@@ -186,9 +186,9 @@ pub fn diff_peerlist(peer1: &PeerUpdate, peer2: &PeerUpdate) -> (PeerList, PeerL
         }
     }
 
-    if !peer1map.contains_key(peer2.id.as_str()) {
+    if !peer1map.contains_key(&peer2.id) {
         notinpeer1.push(PeerNode {
-            id: peer2.id.clone(),
+            id: peer2.id,
             ip: peer2.ip.clone(),
             port: peer2.port.clone(),
             version: peer2.version,
@@ -198,9 +198,9 @@ pub fn diff_peerlist(peer1: &PeerUpdate, peer2: &PeerUpdate) -> (PeerList, PeerL
         });
     }
 
-    if !peer2map.contains_key(peer1.id.as_str()) {
+    if !peer2map.contains_key(&peer1.id) {
         notinpeer2.push(PeerNode {
-            id: peer1.id.clone(),
+            id: peer1.id,
             ip: peer1.ip.clone(),
             port: peer1.port.clone(),
             version: peer1.version,

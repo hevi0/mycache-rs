@@ -1,3 +1,5 @@
+use crate::common::*;
+
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 // Alternatively could implement a balanced tree structure
@@ -42,7 +44,7 @@ fn hash_type<T: Hash>(obj: &T) -> u64 {
 
 pub(crate) struct Chash {
     salts: Vec<u32>,
-    vnodes: Vec<String>,
+    vnodes: Vec<IdType>,
     hashes: Vec<u64>
 }
 
@@ -55,9 +57,9 @@ impl Chash {
         }
     }
 
-    pub fn add_node(&mut self, id: &str) {
+    pub fn add_node(&mut self, id: &IdType) {
         let hashes = self.salts.iter().map(|s| {
-            hash_bytes(s.clone(), id.as_bytes())
+            hash_bytes(s.clone(), &id.to_be_bytes())
         });
 
         for h in hashes {
@@ -66,32 +68,32 @@ impl Chash {
                 i += 1;
             }
             if i < self.hashes.len() && h == self.hashes[i] {
-                if self.vnodes[i] == id {
+                if self.vnodes[i] == id.to_owned() {
                     // already added this node in the past
                     continue;
                 }
                 panic!("Collision between hashes! (Should be rare)");
             }
             self.hashes.insert(i, h);
-            self.vnodes.insert(i, id.to_string());
+            self.vnodes.insert(i, id.to_owned());
         }
     }
 
-    pub fn drop_node(&mut self, id: &str) {
+    pub fn drop_node(&mut self, id: &IdType) {
         let hashes = self.salts.iter().map(|s| {
-            hash_bytes(s.clone(), id.as_bytes())
+            hash_bytes(s.clone(), &id.to_be_bytes())
         });
 
         for h in hashes {
             let idx = binary_search(&self.hashes, h);
-            if self.vnodes[idx] == id {
+            if self.vnodes[idx] == *id {
                 self.vnodes.remove(idx);
                 self.hashes.remove(idx);
             }
         }
     }
 
-    pub fn calculate_node<T: Hash>(&self, obj: &T) -> &str {
+    pub fn calculate_node<T: Hash>(&self, obj: &T) -> &IdType {
         let h = hash_type(obj);
         let idx = binary_search(&self.hashes, h);
 

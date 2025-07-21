@@ -137,7 +137,7 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(id: String, data_path: Option<String>, shutdown: Shutdown) -> Node {
+    pub fn new(id: IdType, data_path: Option<String>, shutdown: Shutdown) -> Node {
 
 
         let path: PathBuf = match &data_path {
@@ -151,8 +151,8 @@ impl Node {
                 })
             }
         };
-        let config_file = path.join(format!("{}.config.json", id));
-        let state_file = path.join(format!("{}.state.json", id));
+        let config_file = path.join(format!("node{}.config.json", id));
+        let state_file = path.join(format!("node{}.state.json", id));
 
         let config = load_config(&config_file).unwrap_or_else(|err| {
             println!("Could not find/open config for {}: {:?}", id, err);

@@ -4,6 +4,8 @@ use std::error::Error;
 pub(crate) type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub(crate) type PeerConnResult<T> = std::result::Result<T, PeerConnError>;
 
+pub(crate) type IdType = u16;
+
 pub(crate) struct PeerConnError(pub String);
 
 impl PeerConnError {

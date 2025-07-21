@@ -1,9 +1,13 @@
+use crate::common::*;
+
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
+pub type NodeVersions = Vec<u64>;
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct PeerNode {
-    pub id: String,
+    pub id: IdType,
     pub ip: String,
     pub port: String,
     pub version: u64,
@@ -13,11 +17,11 @@ pub struct PeerNode {
 }
 
 pub type PeerList = Vec<PeerNode>;
-pub type PeerMap = HashMap<String, PeerNode>;
+pub type PeerMap = HashMap<IdType, PeerNode>;
 
 #[derive(Deserialize, Serialize)]
 pub struct Seed {
-    pub id: String,
+    pub id: IdType,
     pub ip: String,
     pub port: String
 }
