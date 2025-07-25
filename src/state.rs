@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -10,7 +11,7 @@ use crate::connection::PeerUpdate;
 use crate::peernode::*;
 use crate::common::*;
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct State {
     pub id: IdType,
     pub ip: String,
@@ -36,6 +37,44 @@ impl State {
                 eprintln!("Could not serialize state: {:?}", &e); 
             }
         }
+    }
+
+    pub fn max_known_id(&self) -> IdType {
+        let mut curr_max = self.id;
+        for k in self.peermap.keys() {
+            curr_max = max(curr_max, *k);
+        }
+
+        curr_max
+    }
+
+    pub fn diff_versions(&self, offset: usize, nodes: &Vec<u64>) -> (Vec<IdType>, Vec<IdType>) {
+        let mut notinself: Vec<IdType> = Vec::with_capacity(nodes.len());
+        let mut notinpeer: Vec<IdType> = Vec::with_capacity(nodes.len());
+        for i in 0..nodes.len() {
+            let id = (i + offset) as IdType;
+            
+            if !self.peermap.contains_key(&id) {
+                notinself.push(id);
+            } else if self.peermap[&id].version > nodes[i] {
+                notinpeer.push(id);
+            } else if self.peermap[&id].version < nodes[i] {
+                notinself.push(id);
+            }
+        }
+
+        // We need to also take into account that this
+        // node has more peers beyond the ones known by the
+        // other node that is talking to this one.
+        // Add these peers to the notinpeer.
+        let n = self.max_known_id() as usize;
+        if nodes.len() <= n {
+            for id in nodes.len()..n {
+                notinpeer.push(id as u16);
+            }
+        }
+
+        (notinself, notinpeer)
     }
 
     pub fn diff_peerlist(&self, peer: &PeerUpdate) -> (PeerList, PeerList) {
@@ -81,13 +120,28 @@ impl State {
 
     /// Merge peerlist (which includes updates and new peers)
     pub fn merge_peerlist(&mut self, peerlist: &PeerList) -> u32 {
+
+        println!("Merging {:?}", peerlist);
         let mut new_peer_counter: u32 = 0; // only count NEW peers, not updates
         for p in peerlist {
             if p.id != self.id {
                 if !self.peermap.contains_key(&p.id) {
                     new_peer_counter += 1;
+                    self.peermap.insert(p.id, p.clone());
+                    println!("New peer merged");
+
+                } else if self.peermap[&p.id].version < p.version {
+                    let peernode = self.peermap.get_mut(&p.id).unwrap();
+                    peernode.id = p.id;
+                    peernode.ip = p.ip.clone();
+                    peernode.port = p.port.clone();
+                    peernode.version = p.version;
+                    peernode.generation = p.generation;
+                    peernode.error_count = 0; // New version of this node, means we should probably retry connections
+                    println!("Peer update merged");
+                    // Not updating the healthcheck,
+                    // this belong to this node's view
                 }
-                self.peermap.insert(p.id.clone(), p.clone());
             }
         }
         new_peer_counter

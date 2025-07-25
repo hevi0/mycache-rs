@@ -1,4 +1,5 @@
 use crate::common::*;
+use crate::node::Node;
 use crate::peernode::*;
 
 use serde::{Deserialize, Serialize};
@@ -30,6 +31,14 @@ impl Connection {
         }
 
         match &cur[0] {
+            151 => {
+                let len = u32::from_be_bytes(cur[1..5].try_into()?);
+
+                // There's enough bytes in the buffer to parse
+                if cur.len() - 5 <= (len as usize) {
+                    return Ok(true)
+                }
+            }
             152 => { // 'j'
                 
                 let len = u32::from_be_bytes(cur[1..5].try_into()?);
@@ -51,11 +60,23 @@ impl Connection {
         let frame_ok = self.check_frame(&self.buffer)?;
         
         if frame_ok {
-            let end = 5 + u32::from_be_bytes(self.buffer[1..5].try_into()?) as usize;
-            let update: PeerUpdate = serde_json::from_slice(&self.buffer[5..end])?;
-            self.buffer.advance(end);
+            let t = &self.buffer[0];
+            if *t == 151 {
+                let end = 5 + u32::from_be_bytes(self.buffer[1..5].try_into()?) as usize;
+                let node_versions: NodeVersions = serde_json::from_slice(&self.buffer[5..end])?;
+                self.buffer.advance(end);
 
-            return Ok(Some(Frame::Update(update)));
+                return Ok(Some(Frame::Init(node_versions)));
+            }
+
+            if *t == 152 {
+                let end = 5 + u32::from_be_bytes(self.buffer[1..5].try_into()?) as usize;
+                let update: PeerUpdate = serde_json::from_slice(&self.buffer[5..end])?;
+                self.buffer.advance(end);
+
+                return Ok(Some(Frame::Update(update)));
+            }
+            
         }
 
         
@@ -70,7 +91,7 @@ impl Connection {
             let result = self.parse_frame().await;
             if let Err(e) = &result{
                 println!("Error reading from buffer");
-                return Ok(None);
+                return Err(PeerError::NonConnectionError);
             }
 
             if let Some(frame) = result.unwrap() {
@@ -90,12 +111,12 @@ impl Connection {
 
                         // If the buffer isn't empty, the connection to the
                         // other party was broken somehow
-                        return Err(PeerConnError("Connection reset by peer".to_string()));
-                            
+                        //return Err(PeerError::ConnError(PeerConnError("Connection reset by peer".to_string())));
+                        return Err(PeerError::ConnectionResetError)       
                     }
                 }
                 Err(e) => {
-                    return Err(PeerConnError("Error reading from peer stream".to_string()));
+                    return Err(PeerError::ReadStreamError);
                 }
             }
         }
@@ -126,6 +147,27 @@ impl Connection {
                     }
                 }
                 
+            },
+            Frame::Init(data) => {
+                match serde_json::to_string::<NodeVersions>(data) {
+                    Ok(datastr) => {
+                        let databytes = datastr.as_bytes();
+
+                        if let Err(e) = self.stream.write_u8(151).await {
+                            peer_write_failed = true;
+                        }
+                        if let Err(e) = self.stream.write_u32(databytes.len() as u32).await {
+                            peer_write_failed = true;
+                        }
+                        if let Err(e) = self.stream.write_all(databytes).await {
+                            peer_write_failed = true;
+                        }
+                    }
+                    Err(e) => {
+                        println!("Error serializing frame: {:?}", e);
+                        return Ok(());
+                    }
+                }
             }
         }
 
@@ -134,7 +176,7 @@ impl Connection {
         }
         
         if peer_write_failed {
-            Err(PeerConnError("Error writing to peer stream".to_string()))
+            Err(PeerError::WriteStreamError)
         } else {
             Ok(())
         }
@@ -149,10 +191,25 @@ pub(crate) struct PeerUpdate {
     pub port: String,
     pub version: u64,
     pub generation: u32,
-    pub peerlist: PeerList
+    pub peerlist: PeerList,
+    pub peerreq: Vec<IdType>
+}
+
+///
+/// Compact-ish representation of message that holds version for
+/// a certain number of nodes after an offset.
+/// This allows for a back-and-forth conversation to occur
+/// between nodes in chunks.
+#[derive(Deserialize, Serialize, Debug)]
+pub(crate) struct NodeVersions {
+    pub id: IdType,
+    pub offset: usize,
+    pub versions: Vec<u64>
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 pub(crate) enum Frame {
-    Update(PeerUpdate)
+    Update(PeerUpdate),
+    Init(NodeVersions)
+
 }

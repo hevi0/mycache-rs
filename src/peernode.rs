@@ -3,8 +3,6 @@ use crate::common::*;
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
-pub type NodeVersions = Vec<u64>;
-
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct PeerNode {
     pub id: IdType,

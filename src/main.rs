@@ -61,7 +61,7 @@ async fn main() {
     let node = Node::new(id, None, shutdown);
 
     // run async jobs on the same task
-    let _ = tokio::join!(node.listenloop(), node.gossiploop());
+    let _ = tokio::join!(node.listenloop(), node.gossiploop2());
     join.await.unwrap();
     println!("Exiting...");
 
