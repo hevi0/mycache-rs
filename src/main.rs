@@ -38,6 +38,9 @@ use shutdown::*;
 mod node;
 use node::*;
 
+mod peerxchg;
+use peerxchg::*;
+
 
 #[tokio::main]
 async fn main() {
@@ -61,7 +64,7 @@ async fn main() {
     let node = Node::new(id, None, shutdown);
 
     // run async jobs on the same task
-    let _ = tokio::join!(node.listenloop(), node.gossiploop2());
+    let _ = tokio::join!(node.listenloop(), node.peerxchg_gossip_loop());
     join.await.unwrap();
     println!("Exiting...");
 

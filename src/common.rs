@@ -1,5 +1,4 @@
 use std::fmt;
-use std::error::Error;
 
 pub(crate) type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub(crate) type PeerConnResult<T> = std::result::Result<T, PeerError>;
@@ -16,13 +15,29 @@ pub(crate) enum PeerError {
     /// An error trying to write to the stream
     WriteStreamError,
 
+    // Another reason the connection failed
+    OtherError,
+
     /// Connection is working, but something else went wrong.
     /// This should not count toward the error_count between peers.
     /// Check frame parsing or serialization logic.
     NonConnectionError
 }
 
-impl Error for PeerError {
+impl PeerError {
+    pub fn convert_io_error<T>(result: std::result::Result<T, std::io::Error>) -> PeerConnResult<T> {
+        match result {
+            Ok(contents) => {
+                Ok(contents)
+            }
+            Err(e) => {
+                Err(PeerError::OtherError)
+            }
+        }
+    }
+}
+
+impl std::error::Error for PeerError {
 
 }
 
