@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 
+/// Encapsulate logic for communicating shutdown
+/// between long-running async tasks.
 #[derive(Clone, Debug)]
 pub struct Shutdown {
     _shutdown: Arc<Mutex<bool>>
@@ -17,6 +19,9 @@ impl Shutdown {
         }
     }
 
+    ///
+    /// Let every task that is checking, or awaiting,
+    /// know that we are shutting down.
     pub fn shutdown(&self) {
         let result = self._shutdown.lock();
         
@@ -32,6 +37,7 @@ impl Shutdown {
         }
     }
 
+    /// Await for shutdown asynchronously
     pub async fn wait_shutdown(&self) -> bool {
         loop {
             let result = self._shutdown.try_lock();
@@ -44,6 +50,8 @@ impl Shutdown {
         }
     }
 
+    /// An immediate check for shutdown flag.
+    /// This logic should not block, but immediately return the flag's value.
     pub fn check_shutdown(&self) -> bool {
         let result = self._shutdown.try_lock();
         if let Ok(guard) = result {

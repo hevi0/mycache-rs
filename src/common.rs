@@ -6,10 +6,6 @@ pub(crate) type PeerConnResult<T> = std::result::Result<T, PeerError>;
 
 pub(crate) type IdType = u16;
 
-pub(crate) struct PeerConnError(pub String);
-
-pub(crate) struct OtherError(pub String);
-
 pub(crate) enum PeerError {
     /// Connection Reset
     ConnectionResetError,
