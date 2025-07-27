@@ -147,7 +147,7 @@ impl State {
         new_peer_counter
     }
 
-    // Config is consumed, should it?
+
     pub fn from_config(config: &Config) -> State {
         let mut s = State {
             id: config.id,
@@ -173,7 +173,6 @@ impl State {
         s
     }
 
-    // Config is consumed, should it?
     pub fn merge_config(&mut self, config: &Config) {
         self.id = config.id;
         self.ip = config.ip.clone();
@@ -206,63 +205,4 @@ impl State {
         self.peermap.values().collect()
     }
 
-}
-
-pub fn diff_peerlist(peer1: &PeerUpdate, peer2: &PeerUpdate) -> (PeerList, PeerList) {
-    let max_capacity = peer2.peerlist.len() + peer1.peerlist.len();
-    let mut notinpeer2: Vec<PeerNode> = Vec::with_capacity(max_capacity);
-    let mut notinpeer1: Vec<PeerNode> = Vec::with_capacity(max_capacity);
-
-    let mut peer1map: HashMap<&IdType, &PeerNode> = HashMap::with_capacity(peer1.peerlist.len());
-    for p in &peer1.peerlist {
-        peer1map.insert(&p.id, &p);
-    }
-
-    let mut peer2map: HashMap<&IdType, &PeerNode> = HashMap::with_capacity(peer2.peerlist.len());
-    for p in &peer2.peerlist {
-        peer2map.insert(&p.id, &p);
-    }
-
-    for k in peer1map.keys() {
-
-        if !peer2map.contains_key(*k) {
-            notinpeer2.push(peer1map[k].clone());
-        } else if peer2map[*k].version < peer1map[k].version {
-            notinpeer2.push(peer1map[k].clone());
-        }
-    }
-    
-    for k in peer2map.keys() {
-        if !peer1map.contains_key(*k) {
-            notinpeer1.push(peer2map[k].clone())
-        } else if peer1map[*k].version < peer2map[k].version {
-            notinpeer1.push(peer2map[k].clone());
-        }
-    }
-
-    if !peer1map.contains_key(&peer2.id) {
-        notinpeer1.push(PeerNode {
-            id: peer2.id,
-            ip: peer2.ip.clone(),
-            port: peer2.port.clone(),
-            version: peer2.version,
-            generation: peer2.generation,
-            healthcheck: 0,
-            error_count: 0
-        });
-    }
-
-    if !peer2map.contains_key(&peer1.id) {
-        notinpeer2.push(PeerNode {
-            id: peer1.id,
-            ip: peer1.ip.clone(),
-            port: peer1.port.clone(),
-            version: peer1.version,
-            generation: peer1.generation,
-            healthcheck: 0,
-            error_count: 0
-        });
-    }
-
-    (notinpeer1, notinpeer2)
 }
