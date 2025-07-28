@@ -147,7 +147,6 @@ impl State {
         new_peer_counter
     }
 
-
     pub fn from_config(config: &Config) -> State {
         let mut s = State {
             id: config.id,
@@ -198,11 +197,6 @@ impl State {
                 });
             }
         }
-    }
-
-    // allow for caching/memoizing the peer list
-    pub fn peerlist(&self) -> Vec<&PeerNode> { 
-        self.peermap.values().collect()
     }
 
 }

@@ -101,7 +101,7 @@ impl Node {
     }
 
     /// Listens for gossip protocol messages from other nodes.
-    pub async fn listenloop(&self) {
+    pub async fn listenloop(&'static self) {
         let state_clone = self.state.clone();
 
         // Ok, we've (re)started the server loop. Now's a pretty good
@@ -133,7 +133,9 @@ impl Node {
                             // This result will just catch any errors that occur on the stream,
                             // print a message about it, but continue the loop.
                             if let Ok(stream) = result {
-                                self.handle_incoming(stream.0).await
+                                tokio::spawn(async move {
+                                    self.handle_incoming(stream.0).await;
+                                });
                             }
                             
                         },
@@ -145,6 +147,8 @@ impl Node {
                         }
                     }
                 }
+
+                // Cleanup remaining work, or wait for any threads to finish?
             }
             Err(e) => {
                 println!("Error setting up listener: {:?}", e);
@@ -156,7 +160,7 @@ impl Node {
     /// This method is intended to multiplex different
     /// kinds of messages/frames coming to our public-facing
     /// TCP listener.
-    async fn handle_incoming(&self, stream: TcpStream) {
+    async fn handle_incoming(&'static self, stream: TcpStream) {
         let mut conn = Connection::new(stream);
 
         let Ok(maybe_frame) = conn.read_frame().await else {

@@ -1,17 +1,10 @@
 
-use std::path::PathBuf;
 
-use std::time::Duration;
 use std::vec::Vec;
-use std::fs::File;
-use std::io::{BufReader};
-use std::process::exit;
-use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
 
-use tokio::net::{TcpListener, TcpStream};
+use std::process::exit;
+
 use tokio::signal;
-use serde_json;
 
 use std::env;
 
@@ -61,7 +54,9 @@ async fn main() {
         shutdown_clone.shutdown();
     });
 
-    let node = Node::new(id, None, shutdown);
+    // node needs to have static lifetime so that it can be
+    // allowed to be referenced in threads.
+    let node: &'static mut Node = Box::leak(Box::new(Node::new(id, None, shutdown)));
 
     // run async jobs on the same task
     let _ = tokio::join!(node.listenloop(), node.peerxchg_gossip_loop());

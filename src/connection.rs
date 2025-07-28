@@ -10,6 +10,8 @@ use tokio::net::{TcpStream};
 
 use bytes::{Buf, BytesMut};
 
+use std::io::{Error, ErrorKind};
+
 
 
 pub(crate) struct Connection {
@@ -32,6 +34,7 @@ impl Connection {
 
         match &cur[0] {
             151 => {
+
                 let len = u32::from_be_bytes(cur[1..5].try_into()?);
 
                 // There's enough bytes in the buffer to parse
@@ -49,7 +52,8 @@ impl Connection {
                 }
             }
             _ => {
-                return Err(String::from("Invalid frame").into())
+                // frame is invalid
+                return Err(Error::from(ErrorKind::InvalidData).into())
             }
         }
 
@@ -88,14 +92,25 @@ impl Connection {
         // Keep reading chunks of data from the stream,
         // until an error or a frame is completely read
         loop {
-            let result = self.parse_frame().await;
-            if let Err(e) = &result{
-                println!("Error reading from buffer");
-                return Err(PeerError::NonConnectionError);
-            }
 
-            if let Some(frame) = result.unwrap() {
-                return Ok(Some(frame));
+            // We need to limit the lifetime of the Result<T, dyn Error>
+            // type since it isn't Send. By not being Send, it cannot
+            // exist across await boundaries when handled by threads
+            // since at any await tasks could be moved to another
+            // thread.
+            // Alternatively we could specify Send, but that makes
+            // the Result type less generic. OR, use a different
+            // error type for parse_frame()
+            {
+                let result = self.parse_frame().await;
+                if let Err(e) = &result{
+                    println!("Error reading from buffer");
+                    return Err(PeerError::NonConnectionError);
+                }
+
+                if let Some(frame) = result.unwrap() {
+                    return Ok(Some(frame));
+                }
             }
 
             // Read more from stream, a 0 indicates end-of-stream

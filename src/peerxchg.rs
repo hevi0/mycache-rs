@@ -2,7 +2,6 @@ use crate::common::*;
 use crate::connection::*;
 use crate::node::*;
 use crate::peernode::*;
-use crate::state::*;
 
 use std::time::{Duration, SystemTime};
 use tokio::net::TcpStream;
@@ -128,6 +127,9 @@ impl Node {
         
     }
 
+    ///
+    /// Update state and persist to storage.
+    /// 
     fn update_state(&self, update: &PeerUpdate) {
         let mut locked_state = self.state.lock().unwrap();
         if locked_state.merge_peerlist(&update.peerlist) > 0 {
@@ -147,8 +149,10 @@ impl Node {
         locked_state.save(&self.state_file);
     }
 
-    // PeerXchgInitiator
-   pub(crate) async fn peerxchg_initiator(&self) {
+    ///
+    /// Initiate the peerxchg operation between
+    /// nodes.
+    pub(crate) async fn peerxchg_initiator(&self) {
         // prepare peer versions list and Init msg
 
         let gossipees = self.select_gossipees();
@@ -198,7 +202,10 @@ impl Node {
         
     }
 
-    // PeerXchgServer
+    ///
+    /// Handle the incoming peerxchg init msg
+    /// and complete the conversation with the
+    /// calling node.
     pub(crate) async fn peerxchg_handler(&self, init: NodeVersions, conn: &mut Connection) {
         
         let (notinself, notinpeer) = {
