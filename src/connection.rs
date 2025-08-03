@@ -28,7 +28,7 @@ impl Connection {
             return Ok(false);
         }
 
-        if cur[0] < 151 || cur[0] > 158 {
+        if PrefixCode::Invalid == cur[0].into() {
             return Ok(false);
         }
 
@@ -38,33 +38,6 @@ impl Connection {
         if cur.len() - 5 <= (len as usize) {
             return Ok(true)
         }
-
-        /*
-        match &cur[0] {
-            151 => {
-
-                let len = u32::from_be_bytes(cur[1..5].try_into()?);
-
-                // There's enough bytes in the buffer to parse
-                if cur.len() - 5 <= (len as usize) {
-                    return Ok(true)
-                }
-            }
-            152 => { // 'j'
-                
-                let len = u32::from_be_bytes(cur[1..5].try_into()?);
-
-                // There's enough bytes in the buffer to parse
-                if cur.len() - 5 <= (len as usize) {
-                    return Ok(true)
-                }
-            }
-            _ => {
-                // frame is invalid
-                return Err(Error::from(ErrorKind::InvalidData).into())
-            }
-        }
-        */
 
         Ok(false)
     }
@@ -80,43 +53,43 @@ impl Connection {
 
             let frame = {
                     
-                if *t == 151 {
+                if *t == PrefixCode::PeerxchgInit as u8 {
                     let Ok(d) = serde_json::from_slice(&self.buffer[5..end]) else {
                         return Ok(None);
                     };
                     Some(Frame::Init(d))
 
-                } else if *t == 152 {
+                } else if *t == PrefixCode::PeerxchgUpdate as u8 {
                     let Ok(d) = serde_json::from_slice(&self.buffer[5..end]) else {
                         return Ok(None);
                     };
                     Some(Frame::Update(d))
-                } else if *t == 153 {
+                } else if *t == PrefixCode::SetVal as u8 {
                     let Ok(d) = serde_json::from_slice(&self.buffer[5..end]) else {
                         return Ok(None);
                     };
                     Some(Frame::SetVal(d))
-                } else if *t == 154 {
+                } else if *t == PrefixCode::SetValReply as u8 {
                     let Ok(d) = serde_json::from_slice(&self.buffer[5..end]) else {
                         return Ok(None);
                     };
                     Some(Frame::SetValReply(d))
-                } else if *t == 155 {
+                } else if *t == PrefixCode::GetVal as u8 {
                     let Ok(d) = serde_json::from_slice(&self.buffer[5..end]) else {
                         return Ok(None);
                     };
                     Some(Frame::GetVal(d))
-                } else if *t == 156 {
+                } else if *t == PrefixCode::GetValReply as u8 {
                     let Ok(d) = serde_json::from_slice(&self.buffer[5..end]) else {
                         return Ok(None);
                     };
                     Some(Frame::GetValReply(d))
-                } else if *t == 157 {
+                } else if *t == PrefixCode::ClientGetVal as u8 {
                     let Ok(d) = serde_json::from_slice(&self.buffer[5..end]) else {
                         return Ok(None);
                     };
                     Some(Frame::ClientGetVal(d))
-                } else if *t == 158 {
+                } else if *t == PrefixCode::ClientSetVal as u8 {
                     let Ok(d) = serde_json::from_slice(&self.buffer[5..end]) else {
                         return Ok(None);
                     };
@@ -189,7 +162,7 @@ impl Connection {
     pub async fn write_frame(&mut self, f: &Frame) -> PeerConnResult<()> {
         let mut peer_write_failed = false;
 
-        let prefix = prefix(f);
+        let prefix = get_frame_prefix(f);
 
         match f {
             Frame::Update(data) => {
@@ -272,11 +245,7 @@ impl Connection {
         }
     }
 
-}
-
-
-
-                    
+}              
 
 #[derive(Deserialize, Serialize, Debug)]
 pub(crate) struct PeerUpdate {
@@ -311,34 +280,79 @@ pub(crate) enum Frame {
     GetValReply(Option<(String, String, IdType)>),
     ClientGetVal(String),
     ClientSetVal((String, String))
-
 }
 
-pub fn prefix(frame: &Frame) -> u8 {
+#[repr(u8)]
+#[derive(PartialEq)]
+pub enum PrefixCode {
+    Invalid = 0,
+    PeerxchgInit = 151,
+    PeerxchgUpdate = 152,
+    SetVal = 153,
+    SetValReply = 154,
+    GetVal = 155,
+    GetValReply = 156,
+    ClientGetVal = 157,
+    ClientSetVal = 158
+}
+
+impl From<u8> for PrefixCode {
+    fn from(value: u8) -> PrefixCode {
+        if value == PrefixCode::PeerxchgInit as u8 {
+            PrefixCode::PeerxchgInit
+
+        } else if value == PrefixCode::PeerxchgUpdate as u8 {
+            PrefixCode::PeerxchgUpdate
+
+        } else if value == PrefixCode::SetVal as u8 {
+            PrefixCode::SetVal
+
+        } else if value == PrefixCode::SetValReply as u8 {
+            PrefixCode::SetValReply
+
+        } else if value == PrefixCode::GetVal as u8 {
+            PrefixCode::GetVal
+
+        } else if value == PrefixCode::GetValReply as u8 {
+            PrefixCode::GetValReply
+
+        } else if value == PrefixCode::ClientGetVal as u8 {
+            PrefixCode::ClientGetVal
+
+        } else if value == PrefixCode::ClientSetVal as u8 {
+            PrefixCode::ClientSetVal
+
+        } else {
+            PrefixCode::Invalid
+        }
+    }
+}
+
+pub fn get_frame_prefix(frame: &Frame) -> u8 {
     match frame {
         Frame::Update(_) => {
-            152
+            PrefixCode::PeerxchgUpdate as u8
         }
         Frame::Init(_) => {
-            151
+            PrefixCode::PeerxchgInit as u8
         }
         Frame::SetVal(_) => {
-            153
+            PrefixCode::SetVal as u8
         }
         Frame::SetValReply(_) => {
-            154
+            PrefixCode::SetValReply as u8
         }
         Frame::GetVal(_) => {
-            155
+            PrefixCode::GetVal as u8
         }
         Frame::GetValReply(_) => {
-            156
+            PrefixCode::GetValReply as u8
         }
         Frame::ClientGetVal(_) => {
-            157
+            PrefixCode::ClientGetVal as u8
         }
         Frame::ClientSetVal(_) => {
-            158
+            PrefixCode::ClientSetVal as u8
         }
         
     }
