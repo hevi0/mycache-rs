@@ -1,32 +1,11 @@
-
-
-use std::vec::Vec;
-
+use std::env;
 use std::process::exit;
 
 use tokio::signal;
 
-use std::env;
-
-mod chash;
-mod common;
-mod config;
-mod connection;
-mod kvstore;
-mod node;
-mod peernode;
-mod peerxchg;
-mod state;
-mod shutdown;
-
-use common::*;
-use connection::*;
-use peernode::*;
-use config::*;
-use state::*;
-use shutdown::*;
-use node::*;
-use peerxchg::*;
+use mycache_rs::common::*;
+use mycache_rs::shutdown::*;
+use mycache_rs::node::*;
 
 
 #[tokio::main]

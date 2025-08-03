@@ -1,11 +1,10 @@
 use std::fmt;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-pub(crate) type PeerConnResult<T> = std::result::Result<T, PeerError>;
+pub type IdType = u16;
+pub type PeerConnResult<T> = std::result::Result<T, PeerError>;
 
-pub(crate) type IdType = u16;
-
-pub(crate) enum PeerError {
+pub enum PeerError {
     /// Connection Reset
     ConnectionResetError,
 

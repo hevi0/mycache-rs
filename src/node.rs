@@ -15,6 +15,9 @@ use std::io::{BufReader};
 use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 
+mod kvstore;
+mod peerxchg;
+
 fn load_state(state_file: &PathBuf) -> Result<State> {
     let bufreader = BufReader::new(File::open(&state_file)?);
     let state: State = serde_json::from_reader(bufreader)?;

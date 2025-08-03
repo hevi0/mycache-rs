@@ -1,16 +1,13 @@
 use crate::common::*;
 use crate::peernode::*;
 
+use bytes::{Buf, BytesMut};
+
 use serde::{Deserialize, Serialize};
 use serde_json;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 use tokio::net::{TcpStream};
-
-use bytes::{Buf, BytesMut};
-
-use std::io::{Error, ErrorKind};
-
 
 
 pub(crate) struct Connection {

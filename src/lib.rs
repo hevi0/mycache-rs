@@ -1,10 +1,9 @@
-mod chash;
+
 pub mod common;
+mod chash;
 mod config;
 mod connection;
-mod kvstore;
-mod node;
+pub mod node;
 mod peernode;
-mod peerxchg;
 mod state;
-mod shutdown;
+pub mod shutdown;

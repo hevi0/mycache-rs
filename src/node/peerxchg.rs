@@ -2,10 +2,11 @@ use crate::common::*;
 use crate::connection::*;
 use crate::node::*;
 use crate::peernode::*;
-use crate::state::State;
 
 use std::time::{Duration, SystemTime};
 use tokio::net::TcpStream;
+
+use super::Node;
 
 impl Node {
 

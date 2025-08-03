@@ -1,7 +1,6 @@
 use std::cmp::max;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -12,7 +11,7 @@ use crate::peernode::*;
 use crate::common::*;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct State {
+pub(crate) struct State {
     pub id: IdType,
     pub ip: String,
     pub port: String,
