@@ -1,6 +1,6 @@
 use std::fmt;
 
-pub(crate) type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub(crate) type PeerConnResult<T> = std::result::Result<T, PeerError>;
 
 pub(crate) type IdType = u16;
@@ -52,3 +52,4 @@ impl fmt::Debug for PeerError {
         write!(f, "{:?}", &self)
     }
 }
+

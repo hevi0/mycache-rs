@@ -9,29 +9,23 @@ use tokio::signal;
 use std::env;
 
 mod chash;
-
 mod common;
-use common::*;
-
-mod connection;
-use connection::*;
-
-mod peernode;
-use peernode::*;
-
 mod config;
-use config::*;
-
-mod state;
-use state::*;
-
-mod shutdown;
-use shutdown::*;
-
+mod connection;
+mod kvstore;
 mod node;
-use node::*;
-
+mod peernode;
 mod peerxchg;
+mod state;
+mod shutdown;
+
+use common::*;
+use connection::*;
+use peernode::*;
+use config::*;
+use state::*;
+use shutdown::*;
+use node::*;
 use peerxchg::*;
 
 
@@ -60,6 +54,7 @@ async fn main() {
 
     // run async jobs on the same task
     let _ = tokio::join!(node.listenloop(), node.peerxchg_gossip_loop());
+
     join.await.unwrap();
     println!("Exiting...");
 
