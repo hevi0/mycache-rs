@@ -2,6 +2,7 @@ use crate::common::*;
 use crate::connection::*;
 use crate::node::*;
 use crate::peernode::*;
+use crate::state::State;
 
 use std::time::{Duration, SystemTime};
 use tokio::net::TcpStream;
@@ -131,22 +132,26 @@ impl Node {
     /// Update state and persist to storage.
     /// 
     fn update_state(&self, update: &PeerUpdate) {
-        let mut locked_state = self.state.lock().unwrap();
-        if locked_state.merge_peerlist(&update.peerlist) > 0 {
-            locked_state.version += 1;
+
+        {
+            let mut locked_state = self.state.lock().unwrap();
+            let new_peers = locked_state.merge_peerlist(&update.peerlist);
+            if new_peers.len() > 0 {
+                locked_state.version += 1;
+            }
+            
+            let now = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_else(|e| Duration::from_secs(0)).as_secs();
+            if let Some(peer) = locked_state.peermap.get_mut(&update.id) {
+                peer.healthcheck = now;
+                peer.error_count = 0; // successful exchange, so reset errors
+                peer.version = update.version;
+                peer.generation = update.generation;
+            }
+            
+            locked_state.save(&self.state_file);
         }
-        
-        let now = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_else(|e| Duration::from_secs(0)).as_secs();
-        if let Some(peer) = locked_state.peermap.get_mut(&update.id) {
-            peer.healthcheck = now;
-            peer.error_count = 0; // successful exchange, so reset errors
-            peer.version = update.version;
-            peer.generation = update.generation;
-        }
-        
-        locked_state.save(&self.state_file);
     }
 
     ///
@@ -193,6 +198,9 @@ impl Node {
         };
         
         self.update_state(&update);
+
+        self.process_update(&update);
+
         let myupdate = self.build_update(&update.peerreq, &vec![]);
 
         let result = conn.write_frame(&Frame::Update(myupdate)).await;
@@ -206,7 +214,10 @@ impl Node {
     /// Handle the incoming peerxchg init msg
     /// and complete the conversation with the
     /// calling node.
-    pub(crate) async fn peerxchg_handler(&self, init: NodeVersions, conn: &mut Connection) {
+    pub(crate) async fn peerxchg_handler(&self, 
+        init: NodeVersions, 
+        conn: &mut Connection
+    ) {
         
         let (notinself, notinpeer) = {
             let locked_state = self.state.lock().unwrap();
@@ -232,6 +243,8 @@ impl Node {
         };
 
         self.update_state(&update);
+
+        self.process_update(&update);
 
     }
 }

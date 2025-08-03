@@ -5,6 +5,7 @@ use crate::connection::*;
 use crate::state::*;
 use crate::shutdown::*;
 
+use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::process::exit;
@@ -38,6 +39,7 @@ pub struct Node {
     pub state: Arc<Mutex<State>>,
     pub shutdown: Shutdown,
     pub chash: Arc<Mutex<Chash>>,
+    pub kv_store: Arc<Mutex<HashMap<String, String>>>
 }
 
 impl Node {
@@ -88,7 +90,8 @@ impl Node {
             config: config,
             state: Arc::new(Mutex::new(state)),
             shutdown: shutdown,
-            chash: Arc::new(Mutex::new(Chash::new(vec![452, 70821937, 12, 462308])))
+            chash: Arc::new(Mutex::new(Chash::new(vec![452, 70821937, 12, 462308]))),
+            kv_store: Arc::new(Mutex::new(HashMap::new()))
         };
 
         {
@@ -97,6 +100,20 @@ impl Node {
         }
 
         node
+
+    }
+
+    pub fn process_update(&self, update: &PeerUpdate) {
+        let mut locked_chash = self.chash.lock().unwrap();
+
+        locked_chash.add_node(&update.id);
+        for p in &update.peerlist {
+            locked_chash.add_node(&p.id);
+        }
+
+        println!("============");
+        println!("{:#?}", &locked_chash);
+        println!("============");
 
     }
 
@@ -133,8 +150,9 @@ impl Node {
                             // This result will just catch any errors that occur on the stream,
                             // print a message about it, but continue the loop.
                             if let Ok(stream) = result {
+                                let conn = Connection::new(stream.0);
                                 tokio::spawn(async move {
-                                    self.handle_incoming(stream.0).await;
+                                    self.handle_incoming(conn).await;
                                 });
                             }
                             
@@ -160,8 +178,7 @@ impl Node {
     /// This method is intended to multiplex different
     /// kinds of messages/frames coming to our public-facing
     /// TCP listener.
-    async fn handle_incoming(&'static self, stream: TcpStream) {
-        let mut conn = Connection::new(stream);
+    async fn handle_incoming(&'static self, mut conn: Connection) {
 
         let Ok(maybe_frame) = conn.read_frame().await else {
             return;
@@ -171,6 +188,44 @@ impl Node {
         match maybe_frame {
             Some(Frame::Init(init)) => {
                 self.peerxchg_handler(init, &mut conn).await;
+            }
+
+            Some(Frame::GetVal(k)) => {
+                // - Check consistent-hash for appropriate node
+                // - if it's this node, return it from the local table
+                // - Otherwise, lookup correct node(s)
+                // - and forward request
+                let node_ids = {
+                    let locked_chash = self.chash.lock().unwrap();
+                    let node_ids = locked_chash.calculate_vnodes(k.clone());
+                    node_ids
+                };
+
+                if node_ids.contains(&self.config.id) {
+                    let maybe_val = {
+                        let locked_kv_store = self.kv_store.lock().unwrap();
+                        if let Some(v) = locked_kv_store.get(&k) {
+                            Some(v.clone())
+                        } else {
+                            None
+                        }
+                    };
+
+                    let Some(v) = maybe_val else {
+                        let _ = conn.write_frame(&Frame::GetValReply(None)).await;
+                        return;
+                    };
+
+                    let _ = conn.write_frame(&Frame::GetValReply(Some((k, v.clone(), self.config.id)))).await;
+                    return;
+                }
+                
+            }
+            Some(Frame::SetVal((k, v))) => {
+                // - Check consistent-hash for appropriate node
+                // - if it's this node, update it in the local table
+                // - also, lookup other backup node(s)
+                // - and forward request
             }
             _ => {
                 println!("Not an expected frame, but not an error either")

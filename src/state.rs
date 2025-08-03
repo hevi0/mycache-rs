@@ -119,14 +119,13 @@ impl State {
     }
 
     /// Merge peerlist (which includes updates and new peers)
-    pub fn merge_peerlist(&mut self, peerlist: &PeerList) -> u32 {
-
+    pub fn merge_peerlist(&mut self, peerlist: &PeerList) -> Vec<IdType> {
+        let mut new_peers: Vec<IdType> = vec![]; // only count NEW peers, not updates
         println!("Merging {:?}", peerlist);
-        let mut new_peer_counter: u32 = 0; // only count NEW peers, not updates
         for p in peerlist {
             if p.id != self.id {
                 if !self.peermap.contains_key(&p.id) {
-                    new_peer_counter += 1;
+                    new_peers.push(p.id);
                     self.peermap.insert(p.id, p.clone());
                     println!("New peer merged");
 
@@ -144,7 +143,7 @@ impl State {
                 }
             }
         }
-        new_peer_counter
+        new_peers
     }
 
     pub fn from_config(config: &Config) -> State {
